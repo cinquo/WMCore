@@ -7,6 +7,10 @@
 # Adapted/improved by
 # Diego da Silva Gomes <diego@cern.ch>
 # on 2013/04/08 for use by CMSWEB services.
+#
+# Added SimpleMyProxy class for WMCore.Credential module compatibility.
+# Mattia Cinquilli <mcinquil@cern.ch>
+# on 2013/04/14 for integration on CRAB services.
 
 import logging
 import socket
@@ -174,15 +178,33 @@ class SimpleMyProxy(Credential):
         self.logger = logging.getLogger(type(self).__name__)
 
     def checkMyProxy(self, username, certfile=None, keyfile=None, myproxyserver='myproxy.cern.ch', myproxyport=7512):
+        """
+        Check if a valid myproxy exists and returns related info.
+        This is supposed to be executed by the myproxy creator.
+        """
         sslctx = myproxy_ctx(certfile if certfile else self.serverCert, keyfile if keyfile else self.serverKey)
-        myproxy = mymodule.myproxy_client(sslctx, 'info', username if username else self.userName,
-                                          host=myproxyserver, port=myproxyport)
-        return myproxy
+        myproxy = myproxy_client(sslctx, 'info', username if username else self.userName, logger=self.logger,
+                                 host=myproxyserver, port=myproxyport)
+        myproxystatus = {}
+        for line in myproxy.split('\n'):
+           if line:
+               if 'CRED_START_TIME' in line:
+                   myproxystatus['start'] = line.split('CRED_START_TIME=')[1]
+               elif 'CRED_END_TIME' in line:
+                   myproxystatus['end'] = line.split('CRED_END_TIME=')[1]
+               elif 'CRED_OWNER' in line:
+                   myproxystatus['owner'] = line.split('CRED_OWNER=')[1]
+               elif 'CRED_RETRIEVER_TRUSTED' in line:
+                   myproxystatus['retriever'] = line.split('CRED_RETRIEVER_TRUSTED=')[1]
+        return myproxystatus
 
     def logonRenewMyProxy(self, username, lifetime=43200, certfile=None, keyfile=None, myproxyserver='myproxy.cern.ch', myproxyport=7512):
+        """
+        Retrieves a proxy from an existing myproxy server already delegated.
+        """
         sslctx = myproxy_ctx(certfile if certfile else self.serverCert, keyfile if keyfile else self.serverKey)
-        myproxy = mymodule.myproxy_client(sslctx, 'get', username if username else self.userName, lifetime=lifetime,
-                                          host=myproxyserver, port=myproxyport, logger=self.logger)
+        myproxy = myproxy_client(sslctx, 'get', username if username else self.userName, lifetime=lifetime,
+                                 host=myproxyserver, port=myproxyport, logger=self.logger)
         return myproxy
 
 
